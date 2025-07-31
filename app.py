@@ -6,6 +6,9 @@ import os
 import pandas as pd
 import sys
 
+# Set upload limit to 1GB
+st.set_option('server.maxUploadSize', 1024)
+
 # Inject Open Graph meta tags for social sharing
 st.markdown(
     '''
@@ -21,7 +24,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 # Import the figma workflow modules
 try:
     from figma_copy_workflow.parser import csv_to_word, word_to_csv
-    from figma_copy_workflow.helpers import read_csv_data
 except ImportError as e:
     st.error(f"Error importing figma_copy_workflow modules: {e}")
     st.stop()
@@ -195,7 +197,7 @@ def word_to_csv_interface():
                             try:
                                 if 'path' in locals():
                                     os.unlink(path)
-                            except:
+                            except Exception:
                                 pass
                         
         except Exception as e:
