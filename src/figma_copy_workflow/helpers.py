@@ -1,0 +1,221 @@
+"""Helper functions for Figma Copy Workflow."""
+
+import csv
+from collections import defaultdict
+from typing import Dict, List
+
+from docx import Document
+from docx.shared import Inches, RGBColor
+from docx.enum.table import WD_ALIGN_VERTICAL
+from docx.oxml.shared import OxmlElement, qn
+
+
+def read_csv_data(csv_file_path: str) -> List[Dict[str, str]]:
+    """Read CSV data and return as list of dictionaries."""
+    data = []
+    with open(csv_file_path, 'r', encoding='utf-8') as file:
+        # Handle potential BOM and read content
+        content = file.read()
+        if content.startswith('\ufeff'):
+            content = content[1:]
+        
+        # Split into lines and process
+        lines = content.strip().split('\n')
+        reader = csv.DictReader(lines)
+        
+        for row in reader:
+            # Clean up the data - remove leading/trailing whitespace and tabs
+            cleaned_row = {}
+            for key, value in row.items():
+                cleaned_key = key.strip(' \t"')
+                cleaned_value = value.strip(' \t"') if value else ''
+                cleaned_row[cleaned_key] = cleaned_value
+            data.append(cleaned_row)
+    
+    return data
+
+
+def group_data_by_section(data: List[Dict[str, str]]) -> Dict[str, List[Dict[str, str]]]:
+    """Group data by the 'group' column."""
+    grouped_data = defaultdict(list)
+    
+    for row in data:
+        group = row.get('group', 'Unknown Group')
+        if group and group.strip():  # Only add rows with non-empty groups
+            grouped_data[group].append(row)
+    
+    return dict(grouped_data)
+
+
+def set_cell_background_color(cell, color_rgb):
+    """Set background color for a table cell."""
+    cell_xml_element = cell._tc
+    table_cell_properties = cell_xml_element.get_or_add_tcPr()
+    shade_obj = OxmlElement('w:shd')
+    shade_obj.set(qn('w:fill'), color_rgb)
+    table_cell_properties.append(shade_obj)
+
+
+def create_word_document(grouped_data: Dict[str, List[Dict[str, str]]], output_path: str) -> None:
+    """Create a Word document with headers by section and tables for each group."""
+    doc = Document()
+    
+    # Add title
+    title = doc.add_heading('Figma Copy Export', 0)
+    # Make title gray
+    for run in title.runs:
+        run.font.color.rgb = RGBColor(105, 105, 105)  # Dark gray
+    # Reduce spacing after title
+    title.paragraph_format.space_after = Inches(0.1)
+    
+    for group_name, rows in grouped_data.items():
+        if not rows:  # Skip empty groups
+            continue
+            
+        # Add section header
+        heading = doc.add_heading(group_name, level=1)
+        # Make heading gray
+        for run in heading.runs:
+            run.font.color.rgb = RGBColor(105, 105, 105)  # Dark gray
+        
+        # Reduce spacing before and after heading
+        heading.paragraph_format.space_before = Inches(0.1)
+        heading.paragraph_format.space_after = Inches(0.05)
+        
+        # Create table with headers: Label, Text, ID
+        table = doc.add_table(rows=1, cols=3)
+        table.style = 'Table Grid'
+        
+        # Adjust column widths to fit within page margins (total ~6.5" usable width)
+        table.columns[0].width = Inches(1.5)    # Label - compact
+        table.columns[1].width = Inches(4.0)    # Text - most space for content
+        table.columns[2].width = Inches(1.0)    # ID - minimal space
+        
+        # Add table headers
+        header_cells = table.rows[0].cells
+        header_cells[0].text = 'Label'
+        header_cells[1].text = 'Text'
+        header_cells[2].text = 'ID'
+        
+        # Format headers: bold and light gray background for Label and ID columns
+        for i, cell in enumerate(header_cells):
+            # Make all headers bold and gray text
+            for paragraph in cell.paragraphs:
+                for run in paragraph.runs:
+                    run.bold = True
+                    run.font.color.rgb = RGBColor(105, 105, 105)  # Dark gray text
+                # Reduce font size slightly for better fit
+                paragraph.runs[0].font.size = Inches(0.12)  # ~8.5pt
+            
+            # Set light gray background for Label (0) and ID (2) columns
+            if i != 1:  # Not the Text column
+                set_cell_background_color(cell, 'D3D3D3')  # Light gray
+            
+            # Set vertical alignment
+            cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        
+        # Add data rows
+        for row_data in rows:
+            row_cells = table.add_row().cells
+            row_cells[0].text = row_data.get('layer_name', '')
+            row_cells[1].text = row_data.get('figma_text', '')
+            row_cells[2].text = row_data.get('id', '')
+            
+            # Set light gray background for Label (0) and ID (2) columns
+            for i, cell in enumerate(row_cells):
+                if i != 1:  # Not the Text column
+                    set_cell_background_color(cell, 'D3D3D3')  # Light gray
+                
+                # Set vertical alignment and allow text wrapping
+                cell.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+                # Enable text wrapping for better content display
+                for paragraph in cell.paragraphs:
+                    paragraph.alignment = 0  # Left align
+                    # Reduce font size slightly for better fit
+                    for run in paragraph.runs:
+                        run.font.size = Inches(0.11)  # ~8pt
+        
+        # Add minimal space after each table instead of a full paragraph
+        space_para = doc.add_paragraph()
+        space_para.paragraph_format.space_before = Inches(0)
+        space_para.paragraph_format.space_after = Inches(0.05)
+    
+    # Save the document
+    doc.save(output_path)
+
+
+def read_word_document_data(word_file_path: str) -> Dict[str, str]:
+    """Read Word document and extract updated text content mapped by ID.
+    
+    Args:
+        word_file_path: Path to the input Word document
+        
+    Returns:
+        Dictionary mapping ID to updated text content
+    """
+    doc = Document(word_file_path)
+    id_to_text = {}
+    
+    # Iterate through all tables in the document
+    for table in doc.tables:
+        # Skip header row (index 0) and process data rows
+        for row in table.rows[1:]:  # Skip header row
+            cells = row.cells
+            if len(cells) >= 3:  # Ensure we have Label, Text, ID columns
+                label = cells[0].text.strip()
+                text = cells[1].text.strip()
+                id_value = cells[2].text.strip()
+                
+                # Map ID to updated text content
+                if id_value:  # Only add if ID exists
+                    id_to_text[id_value] = text
+    
+    return id_to_text
+
+
+def update_csv_with_word_changes(original_csv_data: List[Dict[str, str]], 
+                                word_updates: Dict[str, str]) -> List[Dict[str, str]]:
+    """Update original CSV data with changes from Word document.
+    
+    Args:
+        original_csv_data: List of dictionaries from original CSV
+        word_updates: Dictionary mapping ID to updated text content
+        
+    Returns:
+        Updated CSV data with new text content
+    """
+    updated_data = []
+    
+    for row in original_csv_data:
+        # Create a copy of the original row
+        updated_row = row.copy()
+        
+        # Get the ID for this row
+        row_id = row.get('id', '').strip()
+        
+        # If we have an update for this ID, apply it
+        if row_id in word_updates:
+            updated_row['figma_text'] = word_updates[row_id]
+        
+        updated_data.append(updated_row)
+    
+    return updated_data
+
+
+def write_csv_data(csv_data: List[Dict[str, str]], output_path: str) -> None:
+    """Write CSV data to file.
+    
+    Args:
+        csv_data: List of dictionaries to write as CSV
+        output_path: Path where the CSV file should be saved
+    """
+    if not csv_data:
+        raise ValueError("No data to write to CSV")
+    
+    # Get all possible fieldnames from the data
+    fieldnames = list(csv_data[0].keys())
+    
+    with open(output_path, 'w', newline='', encoding='utf-8') as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(csv_data)
