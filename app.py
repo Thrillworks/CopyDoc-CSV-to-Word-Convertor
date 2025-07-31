@@ -7,7 +7,7 @@ import pandas as pd
 import sys
 
 # Set upload limit to 1GB
-st.set_option('server.maxUploadSize', 1024)
+# st.set_option('server.maxUploadSize', 1024)  # Set in config.toml instead
 
 # Inject Open Graph meta tags for social sharing
 st.markdown(
