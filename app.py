@@ -46,7 +46,7 @@ def main():
     )
     
     if preserve_formatting:
-        st.sidebar.success("📝 Formatting: **Markdown** (bold, *italic*, lists)")
+        st.sidebar.success("📝 Formatting: **Markdown** (bold, *italic*, lists, Word headings)")
     else:
         st.sidebar.info("📄 Formatting: Plain text only")
     
@@ -64,7 +64,7 @@ def csv_to_word_ui(preserve_formatting: bool):
     
     # Show formatting info
     if preserve_formatting:
-        st.info("ℹ️ Text formatting will be preserved as Markdown when extracting from Word documents.")
+        st.info("ℹ️ Text formatting will be preserved as Markdown (bold, italic, lists, Word-style headings) when extracting from Word documents.")
     else:
         st.info("ℹ️ Only plain text will be extracted from Word documents (no formatting).")
     
@@ -135,7 +135,7 @@ def word_to_csv_ui(preserve_formatting: bool):
     
     # Show formatting info
     if preserve_formatting:
-        st.info("ℹ️ Text formatting will be preserved as Markdown (**bold**, *italic*, - lists) when extracting from Word.")
+        st.info("ℹ️ Text formatting will be preserved as Markdown (**bold**, *italic*, - lists, # Word-style headings) when extracting from Word.")
     else:
         st.info("ℹ️ Only plain text will be extracted from Word documents (no formatting).")
     
@@ -225,7 +225,7 @@ def word_to_new_csv_ui(preserve_formatting: bool):
     
     # Show formatting info
     if preserve_formatting:
-        st.info("ℹ️ Text formatting will be preserved as Markdown (**bold**, *italic*, - lists) when extracting from Word.")
+        st.info("ℹ️ Text formatting will be preserved as Markdown (**bold**, *italic*, - lists, # Word-style headings) when extracting from Word.")
     else:
         st.info("ℹ️ Only plain text will be extracted from Word documents (no formatting).")
     

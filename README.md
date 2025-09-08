@@ -9,7 +9,7 @@ Live app: https://tw-copydoc-csv-to-word-convertor.streamlit.app/
 - **CSV → Word**: Convert CSV data into a formatted Word document with section headings and tables.
 - **Word → CSV (update existing)**: Upload the original CSV and an edited Word document to extract changes back into CSV, preserving structure.
 - **Word → New CSV**: Convert a Word document directly into a new CSV with the standard columns.
-- **Enhanced formatting preservation**: Choose to preserve bold/italic/list formatting as Markdown, or extract plain text. **Now supports numbered lists** (1., 2., a., i., etc.) and maintains their original numbering format.
+- **Enhanced formatting preservation**: Choose to preserve bold/italic/list formatting and Word headings (Heading 1–6) as Markdown, or extract plain text. **Numbered lists** (1., 2., a., i., etc.) keep their original numbering format.
 - **Interactive UI**: Streamlit-based UI with upload previews and download buttons.
 
 ## Project Structure
@@ -80,13 +80,17 @@ streamlit run app.py --server.port=8502
 
 ### Word document expectations
 
-- Headings in the document are treated as section names (used for `frame` and `group`).
+- Headings (Word Heading 1–6) in the document are treated as section names (used for `frame` and `group`).
 - Tables should be shaped like one of:
   - `Label | Text | ID`
   - `ID | Label | Text`
   - `Label | Text` (an ID will be generated)
 
-When formatting preservation is enabled, text formatting and lists are preserved as Markdown:
+When formatting preservation is enabled, headings and text formatting are preserved as Markdown:
+
+**Headings:**
+- Word Heading 1–6 → `#`, `##`, `###`, `####`, `#####`, `######`
+- Only standard Word headings are converted to Markdown headings
 
 **Text Formatting:**
 - `**bold text**` for bold

@@ -11,6 +11,67 @@ from docx.enum.table import WD_ALIGN_VERTICAL
 from docx.oxml.shared import OxmlElement, qn
 
 
+def detect_word_style_heading_level(style_name: str) -> int:
+    """Detect heading level from Word document style name.
+    
+    ONLY detects standard Word Heading 1-6 styles.
+    
+    Args:
+        style_name: The Word document style name (e.g., "Heading 1", "Heading 2")
+        
+    Returns:
+        Heading level (1-6) if style is a standard Word heading, 0 otherwise
+    """
+    style_lower = style_name.lower()
+    
+    # ONLY detect standard Word heading styles (Heading 1, Heading 2, etc.)
+    if 'heading' in style_lower:
+        # Extract heading level from style name (e.g., "Heading 1" -> 1)
+        heading_match = re.search(r'heading\s*(\d+)', style_lower)
+        if heading_match:
+            heading_level = int(heading_match.group(1))
+            # Limit to 6 levels for markdown compatibility
+            return min(heading_level, 6)
+    
+    # Everything else (Title, Subtitle, Caption, etc.) is NOT a heading
+    return 0
+
+
+def detect_heading_level(layer_name: str, figma_text: str) -> int:
+    """DEPRECATED: Layer name-based heading detection is disabled.
+    
+    Heading detection is now ONLY based on Word document styles.
+    This function always returns 0 to ensure no fallback to layer name patterns.
+    
+    Args:
+        layer_name: The layer name from the CSV (Figma layer name) - IGNORED
+        figma_text: The text content - IGNORED
+        
+    Returns:
+        Always returns 0 (no heading detected)
+    """
+    # DISABLED: Only Word document styles determine headings
+    return 0
+
+
+def format_text_with_headings(figma_text: str, heading_level: int) -> str:
+    """Format text with markdown heading if detected as heading.
+    
+    Args:
+        figma_text: The original text content
+        heading_level: Heading level (1-6), 0 for no heading
+        
+    Returns:
+        Text formatted with markdown heading if applicable
+    """
+    if heading_level == 0 or not figma_text or not figma_text.strip():
+        return figma_text
+    
+    # Create markdown heading
+    heading_prefix = '#' * heading_level
+    return f"{heading_prefix} {figma_text.strip()}"
+
+
 def read_csv_data(csv_file_path: str) -> List[Dict[str, str]]:
     """Read CSV data and return as list of dictionaries."""
     data = []
@@ -177,11 +238,30 @@ def read_word_document_data(word_file_path: str, preserve_formatting: bool = Tru
         for para in cell.paragraphs:
             para_text = ""
             
+            # Check if this paragraph is a heading
+            is_heading = False
+            heading_level = 0
+            style_name = para.style.name.lower()
+            
+            # Detect ONLY standard Word heading styles (Heading 1-6)
+            if 'heading' in style_name:
+                # Extract heading level from style name (e.g., "Heading 1" -> 1)
+                heading_match = re.search(r'heading\s*(\d+)', style_name)
+                if heading_match:
+                    heading_level = int(heading_match.group(1))
+                    # Limit to 6 levels for markdown compatibility
+                    heading_level = min(heading_level, 6)
+                    is_heading = True
+            # All other styles (Title, Subtitle, Caption, etc.) are NOT headings
+            
+            # Heading detection is ONLY based on standard Word Heading 1-6 styles
+            # No fallback to layer_name patterns
+            
             # Check if this paragraph is a list item
             is_list_item = False
             is_numbered_list = False
             list_marker = ""
-            if para.text.strip():
+            if para.text.strip() and not is_heading:
                 text = para.text.strip()
                 # Check for unordered list markers
                 if text.startswith(('•', '-', '*')):
@@ -202,13 +282,14 @@ def read_word_document_data(word_file_path: str, preserve_formatting: bool = Tru
                 if not run_text:
                     continue
                     
-                # Apply Markdown formatting
-                if run.bold and run.italic:
-                    run_text = f"***{run_text}***"
-                elif run.bold:
-                    run_text = f"**{run_text}**"
-                elif run.italic:
-                    run_text = f"*{run_text}*"
+                # Apply Markdown formatting (but not for headings as they have their own formatting)
+                if not is_heading:
+                    if run.bold and run.italic:
+                        run_text = f"***{run_text}***"
+                    elif run.bold:
+                        run_text = f"**{run_text}**"
+                    elif run.italic:
+                        run_text = f"*{run_text}*"
                 
                 # Add space if previous run ended with formatting and this one starts with formatting
                 if para_text and para_text[-1] == '*' and run_text.startswith('*'):
@@ -217,8 +298,12 @@ def read_word_document_data(word_file_path: str, preserve_formatting: bool = Tru
                 para_text += run_text
             
             if para_text.strip():
+                # Add heading formatting if this is a heading
+                if is_heading:
+                    heading_prefix = '#' * heading_level
+                    para_text = f"{heading_prefix} {para_text.strip()}"
                 # Add list formatting if this is a list item
-                if is_list_item:
+                elif is_list_item:
                     clean_text = para_text.strip()
                     if is_numbered_list:
                         # Preserve numbered list format - remove the original marker and add it back
@@ -233,10 +318,10 @@ def read_word_document_data(word_file_path: str, preserve_formatting: bool = Tru
                             clean_text = clean_text[1:].strip()
                         para_text = f"- {clean_text}"
                 
-                # Handle spacing for different list types
-                if formatted_text and not (para_text.startswith('- ') or is_numbered_list):
+                # Handle spacing for different types
+                if formatted_text and not (para_text.startswith('- ') or is_numbered_list or para_text.startswith('#')):
                     formatted_text += " "
-                elif formatted_text and (para_text.startswith('- ') or is_numbered_list):
+                elif formatted_text and (para_text.startswith('- ') or is_numbered_list or para_text.startswith('#')):
                     formatted_text += "\n"
                 formatted_text += para_text
         
@@ -252,6 +337,9 @@ def read_word_document_data(word_file_path: str, preserve_formatting: bool = Tru
                 # Use formatted text extraction for the text column
                 text = _extract_formatted_text_from_cell(cells[1])
                 id_value = cells[2].text.strip()
+                
+                # Heading detection is now ONLY based on Word document styles
+                # No fallback to layer_name patterns - if Word doesn't define it as a heading, it's not a heading
                 
                 # Map ID to updated text content
                 if id_value:  # Only add if ID exists
@@ -337,11 +425,27 @@ def extract_word_document_to_csv_format(word_file_path: str, preserve_formatting
         for para in cell.paragraphs:
             para_text = ""
             
-            # Check if this paragraph is a list item
+            # Check if this paragraph is a heading
+            is_heading = False
+            heading_level = 0
+            style_name = para.style.name.lower()
+            
+            # Detect ONLY standard Word heading styles (Heading 1-6)
+            if 'heading' in style_name:
+                # Extract heading level from style name (e.g., "Heading 1" -> 1)
+                heading_match = re.search(r'heading\s*(\d+)', style_name)
+                if heading_match:
+                    heading_level = int(heading_match.group(1))
+                    # Limit to 6 levels for markdown compatibility
+                    heading_level = min(heading_level, 6)
+                    is_heading = True
+            # All other styles (Title, Subtitle, Caption, etc.) are NOT headings
+            
+            # Check if this paragraph is a list item (but not if it's a heading)
             is_list_item = False
             is_numbered_list = False
             list_marker = ""
-            if para.text.strip():
+            if para.text.strip() and not is_heading:
                 text = para.text.strip()
                 # Check for unordered list markers
                 if text.startswith(('•', '-', '*')):
@@ -362,13 +466,14 @@ def extract_word_document_to_csv_format(word_file_path: str, preserve_formatting
                 if not run_text:
                     continue
                     
-                # Apply Markdown formatting
-                if run.bold and run.italic:
-                    run_text = f"***{run_text}***"
-                elif run.bold:
-                    run_text = f"**{run_text}**"
-                elif run.italic:
-                    run_text = f"*{run_text}*"
+                # Apply Markdown formatting (but not for headings as they have their own formatting)
+                if not is_heading:
+                    if run.bold and run.italic:
+                        run_text = f"***{run_text}***"
+                    elif run.bold:
+                        run_text = f"**{run_text}**"
+                    elif run.italic:
+                        run_text = f"*{run_text}*"
                 
                 # Add space if previous run ended with formatting and this one starts with formatting
                 if para_text and para_text[-1] == '*' and run_text.startswith('*'):
@@ -377,8 +482,12 @@ def extract_word_document_to_csv_format(word_file_path: str, preserve_formatting
                 para_text += run_text
             
             if para_text.strip():
+                # Add heading formatting if this is a heading
+                if is_heading:
+                    heading_prefix = '#' * heading_level
+                    para_text = f"{heading_prefix} {para_text.strip()}"
                 # Add list formatting if this is a list item
-                if is_list_item:
+                elif is_list_item:
                     clean_text = para_text.strip()
                     if is_numbered_list:
                         # Preserve numbered list format - remove the original marker and add it back
@@ -393,10 +502,10 @@ def extract_word_document_to_csv_format(word_file_path: str, preserve_formatting
                             clean_text = clean_text[1:].strip()
                         para_text = f"- {clean_text}"
                 
-                # Handle spacing for different list types
-                if formatted_text and not (para_text.startswith('- ') or is_numbered_list):
+                # Handle spacing for different types
+                if formatted_text and not (para_text.startswith('- ') or is_numbered_list or para_text.startswith('#')):
                     formatted_text += " "
-                elif formatted_text and (para_text.startswith('- ') or is_numbered_list):
+                elif formatted_text and (para_text.startswith('- ') or is_numbered_list or para_text.startswith('#')):
                     formatted_text += "\n"
                 formatted_text += para_text
         
@@ -409,12 +518,15 @@ def extract_word_document_to_csv_format(word_file_path: str, preserve_formatting
             # Find the corresponding paragraph object
             for para in doc.paragraphs:
                 if para._element == element:
-                    # Check if this is a heading
+                    # Check if this is a heading (only standard Heading 1-6 styles)
                     style_name = para.style.name.lower()
-                    if 'heading' in style_name or 'title' in style_name:
-                        text_content = para.text.strip()
-                        if text_content:
-                            current_frame_group = text_content
+                    if 'heading' in style_name:
+                        # Verify it's a numbered heading style
+                        heading_match = re.search(r'heading\s*(\d+)', style_name)
+                        if heading_match:
+                            text_content = para.text.strip()
+                            if text_content:
+                                current_frame_group = text_content
                     break
         
         # Check if element is a table
@@ -487,6 +599,9 @@ def extract_word_document_to_csv_format(word_file_path: str, preserve_formatting
                                 layer_name = "Content"
                                 figma_text = _extract_formatted_text_from_cell(cells[0])
                                 id_value = f"generated_{len(csv_data) + 1}"
+                            
+                            # Heading detection is now ONLY based on Word document styles
+                            # No fallback to layer_name patterns - if Word doesn't define it as a heading, it's not a heading
                             
                             # Only add row if there's actual content
                             if figma_text.strip():
