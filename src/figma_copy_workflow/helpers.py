@@ -144,17 +144,85 @@ def create_word_document(grouped_data: Dict[str, List[Dict[str, str]]], output_p
     doc.save(output_path)
 
 
-def read_word_document_data(word_file_path: str) -> Dict[str, str]:
+def read_word_document_data(word_file_path: str, preserve_formatting: bool = True) -> Dict[str, str]:
     """Read Word document and extract updated text content mapped by ID.
     
     Args:
         word_file_path: Path to the input Word document
+        preserve_formatting: Whether to preserve formatting as Markdown (True) or extract plain text (False)
         
     Returns:
         Dictionary mapping ID to updated text content
     """
     doc = Document(word_file_path)
     id_to_text = {}
+    
+    def _extract_formatted_text_from_cell(cell) -> str:
+        """
+        Extract text from a cell while preserving formatting.
+        
+        Args:
+            cell: Cell object from python-docx
+            
+        Returns:
+            Text with Markdown formatting preserved or plain text based on preserve_formatting setting
+        """
+        # If formatting preservation is disabled, return plain text
+        if not preserve_formatting:
+            return cell.text.strip()
+        
+        formatted_text = ""
+        
+        for para in cell.paragraphs:
+            para_text = ""
+            
+            # Check if this paragraph is a list item (basic detection)
+            is_list_item = False
+            if para.text.strip():
+                text = para.text.strip()
+                if (text.startswith(('•', '-', '*')) or 
+                    (len(text) > 2 and text[1] in '.)')):
+                    is_list_item = True
+            
+            for run in para.runs:
+                run_text = run.text
+                if not run_text:
+                    continue
+                    
+                # Apply Markdown formatting
+                if run.bold and run.italic:
+                    run_text = f"***{run_text}***"
+                elif run.bold:
+                    run_text = f"**{run_text}**"
+                elif run.italic:
+                    run_text = f"*{run_text}*"
+                
+                # Add space if previous run ended with formatting and this one starts with formatting
+                if para_text and para_text[-1] == '*' and run_text.startswith('*'):
+                    para_text += " "
+                
+                para_text += run_text
+            
+            if para_text.strip():
+                # Add list formatting if this is a list item
+                if is_list_item:
+                    # Remove common list indicators and add Markdown list prefix
+                    clean_text = para_text.strip()
+                    # Remove bullet points, dashes, or numbered list markers
+                    if clean_text.startswith(('•', '-', '*')):
+                        clean_text = clean_text[1:].strip()
+                    elif len(clean_text) > 2 and clean_text[1] in '.)':
+                        # Remove numbered list markers like "1.", "a)", etc.
+                        clean_text = clean_text[2:].strip()
+                    para_text = f"- {clean_text}"
+                
+                if formatted_text and not para_text.startswith('- '):
+                    formatted_text += " "
+                elif formatted_text and para_text.startswith('- '):
+                    formatted_text += "\n"
+                formatted_text += para_text
+        
+        return formatted_text.strip()
     
     # Iterate through all tables in the document
     for table in doc.tables:
@@ -163,7 +231,8 @@ def read_word_document_data(word_file_path: str) -> Dict[str, str]:
             cells = row.cells
             if len(cells) >= 3:  # Ensure we have Label, Text, ID columns
                 label = cells[0].text.strip()
-                text = cells[1].text.strip()
+                # Use formatted text extraction for the text column
+                text = _extract_formatted_text_from_cell(cells[1])
                 id_value = cells[2].text.strip()
                 
                 # Map ID to updated text content
@@ -219,3 +288,180 @@ def write_csv_data(csv_data: List[Dict[str, str]], output_path: str) -> None:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(csv_data)
+
+
+def extract_word_document_to_csv_format(word_file_path: str, preserve_formatting: bool = True) -> List[Dict[str, str]]:
+    """Extract content from a Word document and format it as CSV data.
+    
+    This function parses a Word document following the expected structure:
+    - Headers become both frame and group names
+    - Tables following headers contain: ID, Label, Text columns
+    - Only outputs: id, frame, group, layer_name, figma_text columns
+    
+    Args:
+        word_file_path: Path to the input Word document
+        preserve_formatting: Whether to preserve formatting as Markdown (True) or extract plain text (False)
+        
+    Returns:
+        List of dictionaries with CSV-compatible structure
+    """
+    doc = Document(word_file_path)
+    csv_data = []
+    current_frame_group = "General Content"
+    
+    def _extract_formatted_text_from_cell(cell) -> str:
+        """Extract text from a cell while preserving formatting if requested."""
+        if not preserve_formatting:
+            return cell.text.strip()
+        
+        formatted_text = ""
+        
+        for para in cell.paragraphs:
+            para_text = ""
+            
+            # Check if this paragraph is a list item (basic detection)
+            is_list_item = False
+            if para.text.strip():
+                text = para.text.strip()
+                if (text.startswith(('•', '-', '*')) or 
+                    (len(text) > 2 and text[1] in '.)')):
+                    is_list_item = True
+            
+            for run in para.runs:
+                run_text = run.text
+                if not run_text:
+                    continue
+                    
+                # Apply Markdown formatting
+                if run.bold and run.italic:
+                    run_text = f"***{run_text}***"
+                elif run.bold:
+                    run_text = f"**{run_text}**"
+                elif run.italic:
+                    run_text = f"*{run_text}*"
+                
+                # Add space if previous run ended with formatting and this one starts with formatting
+                if para_text and para_text[-1] == '*' and run_text.startswith('*'):
+                    para_text += " "
+                
+                para_text += run_text
+            
+            if para_text.strip():
+                # Add list formatting if this is a list item
+                if is_list_item:
+                    # Remove common list indicators and add Markdown list prefix
+                    clean_text = para_text.strip()
+                    # Remove bullet points, dashes, or numbered list markers
+                    if clean_text.startswith(('•', '-', '*')):
+                        clean_text = clean_text[1:].strip()
+                    elif len(clean_text) > 2 and clean_text[1] in '.)':
+                        # Remove numbered list markers like "1.", "a)", etc.
+                        clean_text = clean_text[2:].strip()
+                    para_text = f"- {clean_text}"
+                
+                if formatted_text and not para_text.startswith('- '):
+                    formatted_text += " "
+                elif formatted_text and para_text.startswith('- '):
+                    formatted_text += "\n"
+                formatted_text += para_text
+        
+        return formatted_text.strip()
+    
+    # Process document elements in order
+    for element in doc.element.body:
+        # Check if element is a paragraph
+        if element.tag.endswith('p'):
+            # Find the corresponding paragraph object
+            for para in doc.paragraphs:
+                if para._element == element:
+                    # Check if this is a heading
+                    style_name = para.style.name.lower()
+                    if 'heading' in style_name or 'title' in style_name:
+                        text_content = para.text.strip()
+                        if text_content:
+                            current_frame_group = text_content
+                    break
+        
+        # Check if element is a table
+        elif element.tag.endswith('tbl'):
+            # Find the corresponding table object
+            for table in doc.tables:
+                if table._element == element:
+                    # Process table rows (skip header row if it exists)
+                    for row_idx, row in enumerate(table.rows):
+                        cells = row.cells
+                        
+                        # Expect table structure: Label | Text | ID (3 columns)
+                        # Or: ID | Label | Text (3 columns)
+                        # Or: Label | Text (2 columns, generate ID)
+                        if len(cells) >= 2:
+                            # Skip header row - only skip if it's clearly a header row
+                            cell_texts = [cell.text.strip().lower() for cell in cells]
+                            
+                            # Skip if this row contains only header-like words (exact matches for common headers)
+                            is_header_row = False
+                            if (len(cells) == 3 and 
+                                cell_texts[0] in ['label', 'component'] and 
+                                cell_texts[1] in ['text', 'description'] and 
+                                cell_texts[2] in ['id']):
+                                is_header_row = True
+                            elif (len(cells) == 2 and 
+                                  cell_texts[0] in ['label', 'component'] and 
+                                  cell_texts[1] in ['text', 'description']):
+                                is_header_row = True
+                            
+                            if is_header_row:
+                                continue
+                            
+                            # Extract data based on number of columns
+                            if len(cells) == 3:
+                                # Extract all column texts first
+                                col1_text = _extract_formatted_text_from_cell(cells[0])
+                                col2_text = _extract_formatted_text_from_cell(cells[1])
+                                col3_text = _extract_formatted_text_from_cell(cells[2])
+                                
+                                # Check if third column looks like an ID (contains special characters like :, ;)
+                                if (len(col3_text) > 0 and 
+                                    any(char in col3_text for char in [':', ';', 'I2016', 'I-', '_', '-']) and
+                                    len(col3_text) > 10):
+                                    # Format: Label | Text | ID
+                                    layer_name = col1_text
+                                    figma_text = col2_text
+                                    id_value = col3_text
+                                elif (len(col1_text) > 0 and 
+                                      any(char in col1_text for char in [':', ';', 'I2016', 'I-', '_', '-']) and
+                                      len(col1_text) > 10):
+                                    # Format: ID | Label | Text
+                                    id_value = col1_text
+                                    layer_name = col2_text
+                                    figma_text = col3_text
+                                else:
+                                    # Default: Label | Text | ID (assume third column is ID)
+                                    layer_name = col1_text
+                                    figma_text = col2_text
+                                    id_value = col3_text if col3_text.strip() else f"generated_{len(csv_data) + 1}"
+                            
+                            elif len(cells) == 2:
+                                # Format: Label | Text (generate ID)
+                                layer_name = _extract_formatted_text_from_cell(cells[0])
+                                figma_text = _extract_formatted_text_from_cell(cells[1])
+                                id_value = f"generated_{len(csv_data) + 1}"
+                            
+                            else:
+                                # Single column or more than 3 columns - use first as text
+                                layer_name = "Content"
+                                figma_text = _extract_formatted_text_from_cell(cells[0])
+                                id_value = f"generated_{len(csv_data) + 1}"
+                            
+                            # Only add row if there's actual content
+                            if figma_text.strip():
+                                csv_data.append({
+                                    "id": id_value,
+                                    "frame": current_frame_group,
+                                    "group": current_frame_group,
+                                    "layer_name": layer_name if layer_name.strip() else "Content",
+                                    "figma_text": figma_text
+                                })
+                    break
+    
+    return csv_data

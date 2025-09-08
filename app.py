@@ -3,27 +3,16 @@
 import streamlit as st
 import tempfile
 import os
-import pandas as pd
 import sys
-
-# Set upload limit to 1GB
-# st.set_option('server.maxUploadSize', 1024)  # Set in config.toml instead
-
-# Inject Open Graph meta tags for social sharing
-st.markdown(
-    '''
-    <meta property="og:title" content="CopyDoc CSV to Word Convertor" />
-    <meta property="og:description" content="Convert between CSV and Word documents for copy management. Streamlined workflow for copy teams." />
-    ''',
-    unsafe_allow_html=True
-)
-
-# Add src directory to Python path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+from pathlib import Path
+from io import StringIO
+import pandas as pd
 
 # Import the figma workflow modules
+sys.path.append(str(Path(__file__).parent / "src"))
+
 try:
-    from figma_copy_workflow.parser import csv_to_word, word_to_csv
+    from figma_copy_workflow.parser import csv_to_word, word_to_csv, word_to_csv_new
 except ImportError as e:
     st.error(f"Error importing figma_copy_workflow modules: {e}")
     st.stop()
@@ -43,82 +32,112 @@ def main():
     st.sidebar.title("🛠️ Conversion Mode")
     mode = st.sidebar.radio(
         "Select conversion mode:",
-        ["CSV to Word", "Word to CSV"],
+        ["CSV to Word", "Word to CSV", "Word to New CSV"],
         help="Choose the direction of conversion"
     )
     
-    if mode == "CSV to Word":
-        csv_to_word_interface()
-    else:
-        word_to_csv_interface()
-
-def csv_to_word_interface():
-    """Interface for CSV to Word conversion"""
-    st.header("📄 CSV to Word Document")
-    st.markdown("Upload a CSV file to convert it to a Word document.")
     
-    # File upload
-    uploaded_file = st.file_uploader(
-        "Choose a CSV file",
-        type=['csv'],
-        help="Upload a CSV file with your copy data"
+    # Formatting toggle
+    st.sidebar.title("✨ Text Formatting")
+    preserve_formatting = st.sidebar.toggle(
+        "Preserve formatting",
+        value=True,
+        help="Enable to preserve bold, italic, and list formatting as Markdown. Disable for plain text."
     )
     
-    if uploaded_file is not None:
+    if preserve_formatting:
+        st.sidebar.success("📝 Formatting: **Markdown** (bold, *italic*, lists)")
+    else:
+        st.sidebar.info("📄 Formatting: Plain text only")
+    
+    if mode == "CSV to Word":
+        csv_to_word_ui(preserve_formatting)
+    elif mode == "Word to CSV":
+        word_to_csv_ui(preserve_formatting)
+    else:
+        word_to_new_csv_ui(preserve_formatting)
+
+def csv_to_word_ui(preserve_formatting: bool):
+    """UI for CSV to Word conversion"""
+    st.header("📊 CSV to Word Document")
+    st.markdown("Upload a CSV file to convert it into a formatted Word document.")
+    
+    # Show formatting info
+    if preserve_formatting:
+        st.info("ℹ️ Text formatting will be preserved as Markdown when extracting from Word documents.")
+    else:
+        st.info("ℹ️ Only plain text will be extracted from Word documents (no formatting).")
+    
+    uploaded_csv = st.file_uploader(
+        "Upload CSV file",
+        type=['csv'],
+        help="Select a CSV file to convert to Word format"
+    )
+    
+    if uploaded_csv is not None:
+        # Preview CSV
         try:
-            # Read the CSV data
-            df = pd.read_csv(uploaded_file)
+            # Read CSV for preview
+            csv_content = uploaded_csv.read().decode('utf-8')
+            uploaded_csv.seek(0)  # Reset file pointer
             
-            # Display preview
-            st.subheader("📊 Data Preview")
-            st.dataframe(df.head(10), use_container_width=True)
-            st.info(f"Total rows: {len(df)}")
+            df = pd.read_csv(StringIO(csv_content))
+            st.subheader("📋 CSV Preview")
+            st.dataframe(df.head(), use_container_width=True)
             
-            # Convert button
             if st.button("🔄 Convert to Word", type="primary"):
-                with st.spinner("Converting CSV to Word document..."):
-                    try:
-                        # Create temporary files
-                        with tempfile.NamedTemporaryFile(suffix='.csv', delete=False, mode='w', encoding='utf-8') as tmp_csv:
-                            # Write CSV content to temporary file
-                            uploaded_file.seek(0)
-                            csv_content = uploaded_file.read().decode('utf-8')
-                            tmp_csv.write(csv_content)
-                            tmp_csv_path = tmp_csv.name
-                        
-                        with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as tmp_file:
-                            output_path = tmp_file.name
-                        
-                        # Perform conversion
-                        csv_to_word(tmp_csv_path, output_path)
-                        
-                        # Read the generated file
-                        with open(output_path, 'rb') as f:
-                            word_data = f.read()
-                        
-                        # Clean up temporary files
-                        os.unlink(tmp_csv_path)
-                        os.unlink(output_path)
-                        
-                        # Provide download button
-                        st.success("✅ Conversion completed successfully!")
+                try:
+                    # Save CSV to temporary file
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.csv', mode='w', encoding='utf-8') as tmp_csv:
+                        tmp_csv.write(csv_content)
+                        tmp_csv_path = tmp_csv.name
+                    
+                    # Create temporary Word file
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp_word:
+                        tmp_word_path = tmp_word.name
+                    
+                    # Convert CSV to Word
+                    with st.spinner("🔄 Converting CSV to Word..."):
+                        csv_to_word(tmp_csv_path, tmp_word_path)
+                    
+                    st.success("✅ Conversion completed successfully!")
+                    
+                    # Provide download
+                    with open(tmp_word_path, 'rb') as f:
                         st.download_button(
-                            label="📥 Download Word Document",
-                            data=word_data,
-                            file_name=f"{uploaded_file.name.rsplit('.', 1)[0]}.docx",
+                            label="💾 Download Word Document",
+                            data=f.read(),
+                            file_name=f"{uploaded_csv.name.rsplit('.', 1)[0]}.docx",
                             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                         )
-                        
-                    except Exception as e:
-                        st.error(f"❌ Error during conversion: {str(e)}")
+                    
+                    # Cleanup
+                    os.unlink(tmp_csv_path)
+                    os.unlink(tmp_word_path)
+                    
+                except Exception as e:
+                    st.error(f"❌ Error converting CSV to Word: {str(e)}")
+                    # Cleanup on error
+                    for path in [tmp_csv_path, tmp_word_path]:
+                        try:
+                            if 'path' in locals():
+                                os.unlink(path)
+                        except:
+                            pass
                         
         except Exception as e:
             st.error(f"❌ Error reading CSV file: {str(e)}")
 
-def word_to_csv_interface():
-    """Interface for Word to CSV conversion"""
-    st.header("📊 Word Document to CSV")
+def word_to_csv_ui(preserve_formatting: bool):
+    """UI for Word to CSV conversion"""
+    st.header("📄 Word Document to CSV")
     st.markdown("Upload the original CSV and modified Word document to extract changes back to CSV format.")
+    
+    # Show formatting info
+    if preserve_formatting:
+        st.info("ℹ️ Text formatting will be preserved as Markdown (**bold**, *italic*, - lists) when extracting from Word.")
+    else:
+        st.info("ℹ️ Only plain text will be extracted from Word documents (no formatting).")
     
     col1, col2 = st.columns(2)
     
@@ -131,92 +150,152 @@ def word_to_csv_interface():
         )
     
     with col2:
-        uploaded_file = st.file_uploader(
+        modified_word = st.file_uploader(
             "Upload Modified Word Document",
             type=['docx'],
             help="The Word document with modifications",
             key="modified_word"
         )
     
-    if original_csv is not None and uploaded_file is not None:
+    if original_csv is not None and modified_word is not None:
+        # Preview original CSV
         try:
-            # Preview original CSV
             original_csv_content = original_csv.read().decode('utf-8')
             original_csv.seek(0)  # Reset file pointer
             
-            df = pd.read_csv(original_csv)
+            df = pd.read_csv(StringIO(original_csv_content))
             st.subheader("📋 Original CSV Preview")
             st.dataframe(df.head(), use_container_width=True)
             
-            # Convert button
             if st.button("🔄 Extract Changes to CSV", type="primary"):
-                with st.spinner("Extracting changes from Word to CSV..."):
-                    try:
-                        # Create temporary files
-                        with tempfile.NamedTemporaryFile(suffix='.csv', delete=False, mode='w', encoding='utf-8') as tmp_orig_csv:
-                            tmp_orig_csv.write(original_csv_content)
-                            tmp_orig_csv_path = tmp_orig_csv.name
-                        
-                        with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as tmp_word:
-                            tmp_word.write(uploaded_file.read())
-                            tmp_word_path = tmp_word.name
-                        
-                        with tempfile.NamedTemporaryFile(suffix='.csv', delete=False) as tmp_output:
-                            output_path = tmp_output.name
-                        
-                        # Perform conversion
-                        word_to_csv(tmp_orig_csv_path, tmp_word_path, output_path)
-                        
-                        # Read the generated CSV
-                        df = pd.read_csv(output_path)
-                        
-                        # Display results
-                        st.success("✅ Changes extracted successfully!")
-                        st.subheader("📊 Updated CSV Preview")
-                        st.dataframe(df, use_container_width=True)
-                        st.info(f"Total rows: {len(df)}")
-                        
-                        # Provide download button
-                        csv_data = df.to_csv(index=False)
+                try:
+                    # Save files to temporary locations
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.csv', mode='w', encoding='utf-8') as tmp_orig_csv:
+                        tmp_orig_csv.write(original_csv_content)
+                        tmp_orig_csv_path = tmp_orig_csv.name
+                    
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp_word:
+                        tmp_word.write(modified_word.read())
+                        tmp_word_path = tmp_word.name
+                    
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_output_csv:
+                        tmp_output_csv_path = tmp_output_csv.name
+                    
+                    # Convert Word back to CSV
+                    with st.spinner("🔄 Extracting changes from Word to CSV..."):
+                        word_to_csv(tmp_orig_csv_path, tmp_word_path, tmp_output_csv_path, preserve_formatting)
+                    
+                    st.success("✅ Changes extracted successfully!")
+                    
+                    # Show preview of updated CSV
+                    updated_df = pd.read_csv(tmp_output_csv_path)
+                    st.subheader("📊 Updated CSV Preview")
+                    st.dataframe(updated_df.head(), use_container_width=True)
+                    
+                    # Provide download
+                    with open(tmp_output_csv_path, 'rb') as f:
                         st.download_button(
-                            label="📥 Download Updated CSV",
-                            data=csv_data,
+                            label="💾 Download Updated CSV",
+                            data=f.read(),
                             file_name=f"{original_csv.name.rsplit('.', 1)[0]}_updated.csv",
                             mime="text/csv"
                         )
+                    
+                    # Cleanup
+                    for path in [tmp_orig_csv_path, tmp_word_path, tmp_output_csv_path]:
+                        os.unlink(path)
                         
-                        # Clean up temporary files
-                        os.unlink(tmp_orig_csv_path)
-                        os.unlink(tmp_word_path)
-                        os.unlink(output_path)
-                        
-                    except Exception as e:
-                        st.error(f"❌ Error extracting changes: {str(e)}")
-                        # Cleanup on error
-                        for path in [tmp_orig_csv_path, tmp_word_path, output_path]:
-                            try:
-                                if 'path' in locals():
-                                    os.unlink(path)
-                            except Exception:
-                                pass
+                except Exception as e:
+                    st.error(f"❌ Error extracting changes: {str(e)}")
+                    # Cleanup on error
+                    for path in [tmp_orig_csv_path, tmp_word_path, tmp_output_csv_path]:
+                        try:
+                            if 'path' in locals():
+                                os.unlink(path)
+                        except:
+                            pass
                         
         except Exception as e:
             st.error(f"❌ Error reading original CSV: {str(e)}")
 
-# Add footer
-def add_footer():
-    """Add footer with additional information"""
-    st.markdown("---")
-    st.markdown(
-        """
-        <div style='text-align: center; color: #666;'>
-            <p>🎨 CopyDoc CSV to Word Convertor</p>
-            <p>Built with Streamlit for efficient copy management</p>
-        </div>
-        """,
-        unsafe_allow_html=True
+def word_to_new_csv_ui(preserve_formatting: bool):
+    """UI for Word to New CSV conversion"""
+    st.header("📄 Word Document to New CSV")
+    st.markdown("Upload a Word document to convert its content into a new CSV file with the standard format.")
+    
+    # Show formatting info
+    if preserve_formatting:
+        st.info("ℹ️ Text formatting will be preserved as Markdown (**bold**, *italic*, - lists) when extracting from Word.")
+    else:
+        st.info("ℹ️ Only plain text will be extracted from Word documents (no formatting).")
+    
+    uploaded_word = st.file_uploader(
+        "Upload Word Document",
+        type=['docx'],
+        help="Select a Word document to convert to CSV format",
+        key="new_csv_word"
     )
+    
+    if uploaded_word is not None:
+        st.subheader("📋 Document Information")
+        st.write(f"**Filename:** {uploaded_word.name}")
+        st.write(f"**File size:** {len(uploaded_word.read())} bytes")
+        uploaded_word.seek(0)  # Reset file pointer
+        
+        if st.button("🔄 Convert to CSV", type="primary"):
+            try:
+                # Save Word document to temporary file
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp_word:
+                    tmp_word.write(uploaded_word.read())
+                    tmp_word_path = tmp_word.name
+                
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_csv:
+                    tmp_csv_path = tmp_csv.name
+                
+                # Convert Word to CSV
+                with st.spinner("🔄 Converting Word document to CSV..."):
+                    word_to_csv_new(tmp_word_path, tmp_csv_path, preserve_formatting)
+                
+                st.success("✅ Conversion completed successfully!")
+                
+                # Show preview of generated CSV
+                csv_df = pd.read_csv(tmp_csv_path)
+                st.subheader("📊 Generated CSV Preview")
+                st.dataframe(csv_df, use_container_width=True)
+                
+                # Show some statistics
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total Rows", len(csv_df))
+                with col2:
+                    unique_groups = csv_df['group'].nunique()
+                    st.metric("Unique Groups", unique_groups)
+                with col3:
+                    non_empty_text = (csv_df['figma_text'].str.strip() != '').sum()
+                    st.metric("Content Rows", non_empty_text)
+                
+                # Provide download
+                with open(tmp_csv_path, 'rb') as f:
+                    st.download_button(
+                        label="💾 Download CSV File",
+                        data=f.read(),
+                        file_name=f"{uploaded_word.name.rsplit('.', 1)[0]}_export.csv",
+                        mime="text/csv"
+                    )
+                
+                # Cleanup
+                for path in [tmp_word_path, tmp_csv_path]:
+                    os.unlink(path)
+                    
+            except Exception as e:
+                st.error(f"❌ Error converting Word to CSV: {str(e)}")
+                # Cleanup on error
+                for path in [tmp_word_path, tmp_csv_path]:
+                    try:
+                        if 'path' in locals():
+                            os.unlink(path)
+                    except:
+                        pass
 
 if __name__ == "__main__":
-    main()
-    add_footer()
+    main() 
