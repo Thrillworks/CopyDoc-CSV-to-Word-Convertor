@@ -1,6 +1,7 @@
 """Helper functions for Figma Copy Workflow."""
 
 import csv
+import re
 from collections import defaultdict
 from typing import Dict, List
 
@@ -176,13 +177,25 @@ def read_word_document_data(word_file_path: str, preserve_formatting: bool = Tru
         for para in cell.paragraphs:
             para_text = ""
             
-            # Check if this paragraph is a list item (basic detection)
+            # Check if this paragraph is a list item
             is_list_item = False
+            is_numbered_list = False
+            list_marker = ""
             if para.text.strip():
                 text = para.text.strip()
-                if (text.startswith(('•', '-', '*')) or 
-                    (len(text) > 2 and text[1] in '.)')):
+                # Check for unordered list markers
+                if text.startswith(('•', '-', '*')):
                     is_list_item = True
+                    list_marker = text[0]
+                # Check for numbered lists (more comprehensive)
+                elif len(text) > 2:
+                    # Check for patterns like "1.", "2)", "a.", "A)", "i.", "IV.", etc.
+                    numbered_pattern = r'^(\d+[.)]|[a-zA-Z][.)]|[ivxlcdm]+[.)]|[IVXLCDM]+[.)])\s'
+                    match = re.match(numbered_pattern, text, re.IGNORECASE)
+                    if match:
+                        is_list_item = True
+                        is_numbered_list = True
+                        list_marker = match.group(1)
             
             for run in para.runs:
                 run_text = run.text
@@ -206,19 +219,24 @@ def read_word_document_data(word_file_path: str, preserve_formatting: bool = Tru
             if para_text.strip():
                 # Add list formatting if this is a list item
                 if is_list_item:
-                    # Remove common list indicators and add Markdown list prefix
                     clean_text = para_text.strip()
-                    # Remove bullet points, dashes, or numbered list markers
-                    if clean_text.startswith(('•', '-', '*')):
-                        clean_text = clean_text[1:].strip()
-                    elif len(clean_text) > 2 and clean_text[1] in '.)':
-                        # Remove numbered list markers like "1.", "a)", etc.
-                        clean_text = clean_text[2:].strip()
-                    para_text = f"- {clean_text}"
+                    if is_numbered_list:
+                        # Preserve numbered list format - remove the original marker and add it back
+                        # This ensures consistent spacing while preserving the numbering
+                        marker_length = len(list_marker)
+                        if clean_text.startswith(list_marker):
+                            clean_text = clean_text[marker_length:].strip()
+                        para_text = f"{list_marker} {clean_text}"
+                    else:
+                        # Handle unordered lists - convert to markdown format
+                        if clean_text.startswith(('•', '-', '*')):
+                            clean_text = clean_text[1:].strip()
+                        para_text = f"- {clean_text}"
                 
-                if formatted_text and not para_text.startswith('- '):
+                # Handle spacing for different list types
+                if formatted_text and not (para_text.startswith('- ') or is_numbered_list):
                     formatted_text += " "
-                elif formatted_text and para_text.startswith('- '):
+                elif formatted_text and (para_text.startswith('- ') or is_numbered_list):
                     formatted_text += "\n"
                 formatted_text += para_text
         
@@ -319,13 +337,25 @@ def extract_word_document_to_csv_format(word_file_path: str, preserve_formatting
         for para in cell.paragraphs:
             para_text = ""
             
-            # Check if this paragraph is a list item (basic detection)
+            # Check if this paragraph is a list item
             is_list_item = False
+            is_numbered_list = False
+            list_marker = ""
             if para.text.strip():
                 text = para.text.strip()
-                if (text.startswith(('•', '-', '*')) or 
-                    (len(text) > 2 and text[1] in '.)')):
+                # Check for unordered list markers
+                if text.startswith(('•', '-', '*')):
                     is_list_item = True
+                    list_marker = text[0]
+                # Check for numbered lists (more comprehensive)
+                elif len(text) > 2:
+                    # Check for patterns like "1.", "2)", "a.", "A)", "i.", "IV.", etc.
+                    numbered_pattern = r'^(\d+[.)]|[a-zA-Z][.)]|[ivxlcdm]+[.)]|[IVXLCDM]+[.)])\s'
+                    match = re.match(numbered_pattern, text, re.IGNORECASE)
+                    if match:
+                        is_list_item = True
+                        is_numbered_list = True
+                        list_marker = match.group(1)
             
             for run in para.runs:
                 run_text = run.text
@@ -349,19 +379,24 @@ def extract_word_document_to_csv_format(word_file_path: str, preserve_formatting
             if para_text.strip():
                 # Add list formatting if this is a list item
                 if is_list_item:
-                    # Remove common list indicators and add Markdown list prefix
                     clean_text = para_text.strip()
-                    # Remove bullet points, dashes, or numbered list markers
-                    if clean_text.startswith(('•', '-', '*')):
-                        clean_text = clean_text[1:].strip()
-                    elif len(clean_text) > 2 and clean_text[1] in '.)':
-                        # Remove numbered list markers like "1.", "a)", etc.
-                        clean_text = clean_text[2:].strip()
-                    para_text = f"- {clean_text}"
+                    if is_numbered_list:
+                        # Preserve numbered list format - remove the original marker and add it back
+                        # This ensures consistent spacing while preserving the numbering
+                        marker_length = len(list_marker)
+                        if clean_text.startswith(list_marker):
+                            clean_text = clean_text[marker_length:].strip()
+                        para_text = f"{list_marker} {clean_text}"
+                    else:
+                        # Handle unordered lists - convert to markdown format
+                        if clean_text.startswith(('•', '-', '*')):
+                            clean_text = clean_text[1:].strip()
+                        para_text = f"- {clean_text}"
                 
-                if formatted_text and not para_text.startswith('- '):
+                # Handle spacing for different list types
+                if formatted_text and not (para_text.startswith('- ') or is_numbered_list):
                     formatted_text += " "
-                elif formatted_text and para_text.startswith('- '):
+                elif formatted_text and (para_text.startswith('- ') or is_numbered_list):
                     formatted_text += "\n"
                 formatted_text += para_text
         

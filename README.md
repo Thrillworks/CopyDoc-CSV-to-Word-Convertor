@@ -9,7 +9,7 @@ Live app: https://tw-copydoc-csv-to-word-convertor.streamlit.app/
 - **CSV → Word**: Convert CSV data into a formatted Word document with section headings and tables.
 - **Word → CSV (update existing)**: Upload the original CSV and an edited Word document to extract changes back into CSV, preserving structure.
 - **Word → New CSV**: Convert a Word document directly into a new CSV with the standard columns.
-- **Formatting toggle**: Choose to preserve bold/italic/list formatting as Markdown, or extract plain text.
+- **Enhanced formatting preservation**: Choose to preserve bold/italic/list formatting as Markdown, or extract plain text. **Now supports numbered lists** (1., 2., a., i., etc.) and maintains their original numbering format.
 - **Interactive UI**: Streamlit-based UI with upload previews and download buttons.
 
 ## Project Structure
@@ -86,7 +86,17 @@ streamlit run app.py --server.port=8502
   - `ID | Label | Text`
   - `Label | Text` (an ID will be generated)
 
-When formatting preservation is enabled, bold/italic/list styles are exported as Markdown (e.g., `**bold**`, `*italic*`, `- list item`).
+When formatting preservation is enabled, text formatting and lists are preserved as Markdown:
+
+**Text Formatting:**
+- `**bold text**` for bold
+- `*italic text*` for italic  
+- `***bold italic***` for both
+
+**List Preservation:**
+- **Numbered lists**: Original numbering is preserved (e.g., `1. First item`, `2. Second item`, `a. Letter item`, `i. Roman numeral`)
+- **Unordered lists**: Converted to Markdown format (`- Bullet item`)
+- **Supported numbered formats**: `1.`, `2)`, `a.`, `A)`, `i.`, `IV.`, and more
 
 ## Dependencies
 
