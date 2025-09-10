@@ -11,6 +11,45 @@ from docx.enum.table import WD_ALIGN_VERTICAL
 from docx.oxml.shared import OxmlElement, qn
 
 
+def normalize_quotes_and_apostrophes(text: str) -> str:
+    """
+    Normalize smart quotes and apostrophes to standard ASCII characters.
+    
+    Args:
+        text: Input text containing potential smart quotes/apostrophes
+        
+    Returns:
+        Text with normalized quotes and apostrophes
+    """
+    if not text:
+        return text
+    
+    # Dictionary of smart quotes/apostrophes to their ASCII equivalents
+    replacements = {
+        # Smart quotes
+        '"': '"',  # Left double quotation mark
+        '"': '"',  # Right double quotation mark
+        ''': "'",  # Left single quotation mark
+        ''': "'",  # Right single quotation mark (apostrophe)
+        '‚': "'",  # Single low-9 quotation mark
+        '„': '"',  # Double low-9 quotation mark
+        '‹': "'",  # Single left-pointing angle quotation mark
+        '›': "'",  # Single right-pointing angle quotation mark
+        '«': '"',  # Left-pointing double angle quotation mark
+        '»': '"',  # Right-pointing double angle quotation mark
+        # Additional apostrophe variants
+        '′': "'",  # Prime (sometimes used as apostrophe)
+        '´': "'",  # Acute accent (sometimes used as apostrophe)
+        '`': "'",  # Grave accent (sometimes used as apostrophe)
+    }
+    
+    # Apply all replacements
+    for smart_char, ascii_char in replacements.items():
+        text = text.replace(smart_char, ascii_char)
+    
+    return text
+
+
 def read_csv_data(csv_file_path: str) -> List[Dict[str, str]]:
     """Read CSV data and return as list of dictionaries."""
     data = []
@@ -170,7 +209,7 @@ def read_word_document_data(word_file_path: str, preserve_formatting: bool = Tru
         """
         # If formatting preservation is disabled, return plain text
         if not preserve_formatting:
-            return cell.text.strip()
+            return normalize_quotes_and_apostrophes(cell.text.strip())
         
         formatted_text = ""
         
@@ -201,6 +240,9 @@ def read_word_document_data(word_file_path: str, preserve_formatting: bool = Tru
                 run_text = run.text
                 if not run_text:
                     continue
+                
+                # Normalize smart quotes and apostrophes
+                run_text = normalize_quotes_and_apostrophes(run_text)
                 
                 # Check if this run contains a hyperlink
                 hyperlink_url = None
@@ -366,7 +408,7 @@ def extract_word_document_to_csv_format(word_file_path: str, preserve_formatting
     def _extract_formatted_text_from_cell(cell) -> str:
         """Extract text from a cell while preserving formatting if requested."""
         if not preserve_formatting:
-            return cell.text.strip()
+            return normalize_quotes_and_apostrophes(cell.text.strip())
         
         formatted_text = ""
         
@@ -397,6 +439,9 @@ def extract_word_document_to_csv_format(word_file_path: str, preserve_formatting
                 run_text = run.text
                 if not run_text:
                     continue
+                
+                # Normalize smart quotes and apostrophes
+                run_text = normalize_quotes_and_apostrophes(run_text)
                 
                 # Check if this run contains a hyperlink
                 hyperlink_url = None
