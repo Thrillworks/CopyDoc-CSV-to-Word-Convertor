@@ -9,7 +9,7 @@ Live app: https://tw-copydoc-csv-to-word-convertor.streamlit.app/
 - **CSV → Word**: Convert CSV data into a formatted Word document with section headings and tables.
 - **Word → CSV (update existing)**: Upload the original CSV and an edited Word document to extract changes back into CSV, preserving structure.
 - **Word → New CSV**: Convert a Word document directly into a new CSV with the standard columns.
-- **Enhanced formatting preservation**: Choose to preserve bold/italic/list formatting and Word headings (Heading 1–6) as Markdown, or extract plain text. **Numbered lists** (1., 2., a., i., etc.) keep their original numbering format.
+- **Enhanced formatting preservation**: Choose to preserve bold/italic/list formatting, hyperlinks, and Word headings (Heading 1–6) as Markdown, or extract plain text. **Numbered lists** (1., 2., a., i., etc.) keep their original numbering format. **Hyperlinks** are preserved as Markdown links.
 - **Interactive UI**: Streamlit-based UI with upload previews and download buttons.
 
 ## Project Structure
@@ -96,6 +96,7 @@ When formatting preservation is enabled, headings and text formatting are preser
 - `**bold text**` for bold
 - `*italic text*` for italic  
 - `***bold italic***` for both
+- `[link text](URL)` for hyperlinks
 
 **List Preservation:**
 - **Numbered lists**: Original numbering is preserved (e.g., `1. First item`, `2. Second item`, `a. Letter item`, `i. Roman numeral`)

@@ -281,10 +281,50 @@ def read_word_document_data(word_file_path: str, preserve_formatting: bool = Tru
                 run_text = run.text
                 if not run_text:
                     continue
+                
+                # Check if this run contains a hyperlink
+                hyperlink_url = None
+                
+                # Method 1: Check if run's parent is a hyperlink element
+                parent = run.element.getparent()
+                while parent is not None:
+                    if parent.tag.endswith('hyperlink'):
+                        # Found hyperlink element, extract the relationship ID
+                        rel_id = parent.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
+                        if rel_id:
+                            try:
+                                hyperlink_url = doc.part.rels[rel_id].target_ref
+                                break
+                            except (KeyError, AttributeError):
+                                pass  # Invalid relationship, ignore hyperlink
+                    parent = parent.getparent()
+                
+                # Method 2: Check for hyperlinks in the paragraph's XML structure
+                if not hyperlink_url:
+                    for hyperlink in para.element.iter():
+                        if hyperlink.tag.endswith('hyperlink'):
+                            rel_id = hyperlink.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
+                            if rel_id:
+                                try:
+                                    hyperlink_url = doc.part.rels[rel_id].target_ref
+                                    # Check if this run is within this hyperlink
+                                    for run_elem in hyperlink.iter():
+                                        if run_elem == run.element:
+                                            break
+                                    else:
+                                        hyperlink_url = None  # This run is not part of this hyperlink
+                                        continue
+                                    break
+                                except (KeyError, AttributeError):
+                                    pass  # Invalid relationship, ignore hyperlink
                     
                 # Apply Markdown formatting (but not for headings as they have their own formatting)
                 if not is_heading:
-                    if run.bold and run.italic:
+                    # Handle hyperlinks first (they take precedence over other formatting)
+                    if hyperlink_url:
+                        # Create markdown link format: [text](url)
+                        run_text = f"[{run_text}]({hyperlink_url})"
+                    elif run.bold and run.italic:
                         run_text = f"***{run_text}***"
                     elif run.bold:
                         run_text = f"**{run_text}**"
@@ -292,7 +332,7 @@ def read_word_document_data(word_file_path: str, preserve_formatting: bool = Tru
                         run_text = f"*{run_text}*"
                 
                 # Add space if previous run ended with formatting and this one starts with formatting
-                if para_text and para_text[-1] == '*' and run_text.startswith('*'):
+                if para_text and para_text[-1] in ['*', ')'] and run_text.startswith(('*', '[')):
                     para_text += " "
                 
                 para_text += run_text
@@ -465,10 +505,50 @@ def extract_word_document_to_csv_format(word_file_path: str, preserve_formatting
                 run_text = run.text
                 if not run_text:
                     continue
+                
+                # Check if this run contains a hyperlink
+                hyperlink_url = None
+                
+                # Method 1: Check if run's parent is a hyperlink element
+                parent = run.element.getparent()
+                while parent is not None:
+                    if parent.tag.endswith('hyperlink'):
+                        # Found hyperlink element, extract the relationship ID
+                        rel_id = parent.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
+                        if rel_id:
+                            try:
+                                hyperlink_url = doc.part.rels[rel_id].target_ref
+                                break
+                            except (KeyError, AttributeError):
+                                pass  # Invalid relationship, ignore hyperlink
+                    parent = parent.getparent()
+                
+                # Method 2: Check for hyperlinks in the paragraph's XML structure
+                if not hyperlink_url:
+                    for hyperlink in para.element.iter():
+                        if hyperlink.tag.endswith('hyperlink'):
+                            rel_id = hyperlink.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
+                            if rel_id:
+                                try:
+                                    hyperlink_url = doc.part.rels[rel_id].target_ref
+                                    # Check if this run is within this hyperlink
+                                    for run_elem in hyperlink.iter():
+                                        if run_elem == run.element:
+                                            break
+                                    else:
+                                        hyperlink_url = None  # This run is not part of this hyperlink
+                                        continue
+                                    break
+                                except (KeyError, AttributeError):
+                                    pass  # Invalid relationship, ignore hyperlink
                     
                 # Apply Markdown formatting (but not for headings as they have their own formatting)
                 if not is_heading:
-                    if run.bold and run.italic:
+                    # Handle hyperlinks first (they take precedence over other formatting)
+                    if hyperlink_url:
+                        # Create markdown link format: [text](url)
+                        run_text = f"[{run_text}]({hyperlink_url})"
+                    elif run.bold and run.italic:
                         run_text = f"***{run_text}***"
                     elif run.bold:
                         run_text = f"**{run_text}**"
@@ -476,7 +556,7 @@ def extract_word_document_to_csv_format(word_file_path: str, preserve_formatting
                         run_text = f"*{run_text}*"
                 
                 # Add space if previous run ended with formatting and this one starts with formatting
-                if para_text and para_text[-1] == '*' and run_text.startswith('*'):
+                if para_text and para_text[-1] in ['*', ')'] and run_text.startswith(('*', '[')):
                     para_text += " "
                 
                 para_text += run_text
