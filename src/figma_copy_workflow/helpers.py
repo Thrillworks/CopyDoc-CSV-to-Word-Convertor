@@ -221,7 +221,7 @@ def read_word_document_data(word_file_path: str, preserve_formatting: bool = Tru
                 
                 # Method 2: Check for hyperlinks in the paragraph's XML structure
                 if not hyperlink_url:
-                    for hyperlink in para.element.iter():
+                    for hyperlink in para._element.iter():
                         if hyperlink.tag.endswith('hyperlink'):
                             rel_id = hyperlink.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
                             if rel_id:
@@ -417,7 +417,7 @@ def extract_word_document_to_csv_format(word_file_path: str, preserve_formatting
                 
                 # Method 2: Check for hyperlinks in the paragraph's XML structure
                 if not hyperlink_url:
-                    for hyperlink in para.element.iter():
+                    for hyperlink in para._element.iter():
                         if hyperlink.tag.endswith('hyperlink'):
                             rel_id = hyperlink.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
                             if rel_id:
